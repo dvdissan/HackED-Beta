@@ -17,6 +17,8 @@ local TweenService = game:GetService("TweenService")
 local RealUserInputService = game:GetService("UserInputService")
 local VRService = game:GetService("VRService")
 
+local Food = require(ReplicatedStorage:WaitForChild("LingoFood")) -- every dish and drink is a real gear Tool
+
 local Scenes = {}
 
 -- Every connection made here is remembered, so that going back to the main menu
@@ -763,35 +765,6 @@ end
 -- flight attendant comes to you; the passengers nearby will chat if you talk to them.
 ---------------------------------------------------------------------
 
-local CUP_COLORS = {
-	water = Color3.fromRGB(170, 215, 245),
-	juice = Color3.fromRGB(255, 170, 50),
-	coffee = Color3.fromRGB(80, 50, 30),
-	tea = Color3.fromRGB(190, 120, 60),
-}
-
--- Builds one thing the flight attendant can bring, standing on `at`
-local function buildCabinItem(kit, parent, id, at)
-	local parts = {}
-	local function add(part)
-		table.insert(parts, part)
-	end
-	if CUP_COLORS[id] then
-		add(kit.prop(parent, Enum.PartType.Cylinder, Vector3.new(0.6, 0.42, 0.42), CFrame.new(at + Vector3.new(0, 0.3, 0)) * UPRIGHT, WHITE, nil, 0.45))
-		add(kit.prop(parent, Enum.PartType.Cylinder, Vector3.new(0.46, 0.34, 0.34), CFrame.new(at + Vector3.new(0, 0.25, 0)) * UPRIGHT, CUP_COLORS[id]))
-	elseif id == "sandwich" then
-		local bread = Color3.fromRGB(226, 190, 130)
-		add(kit.prop(parent, Enum.PartType.Block, Vector3.new(0.7, 0.12, 0.6), CFrame.new(at + Vector3.new(0, 0.06, 0)), bread))
-		add(kit.prop(parent, Enum.PartType.Block, Vector3.new(0.72, 0.1, 0.62), CFrame.new(at + Vector3.new(0, 0.17, 0)), Color3.fromRGB(110, 190, 80)))
-		add(kit.prop(parent, Enum.PartType.Block, Vector3.new(0.7, 0.12, 0.6), CFrame.new(at + Vector3.new(0, 0.28, 0)), bread))
-	else -- cookies
-		add(kit.prop(parent, Enum.PartType.Cylinder, Vector3.new(0.05, 0.7, 0.7), CFrame.new(at + Vector3.new(0, 0.025, 0)) * UPRIGHT, WHITE))
-		for _, offset in { Vector3.new(-0.14, 0.08, 0.05), Vector3.new(0.14, 0.08, -0.06), Vector3.new(0, 0.14, 0.1) } do
-			add(kit.prop(parent, Enum.PartType.Cylinder, Vector3.new(0.06, 0.26, 0.26), CFrame.new(at + offset) * UPRIGHT, Color3.fromRGB(170, 115, 60)))
-		end
-	end
-	return parts
-end
 
 local function runAirplane(ctx, kit)
 	local Data = ctx.Data
@@ -804,10 +777,13 @@ local function runAirplane(ctx, kit)
 	local scene = ReplicatedStorage:WaitForChild("Scenarios"):WaitForChild("Airplane"):Clone()
 	scene.Parent = workspace
 
+	Food.start({ burst = ctx.burst, debugLog = ctx.debugLog })
+
 	-- The character spawns on the grass; move them up into the cabin (and again if they respawn)
 	local function boardPlane(character)
-		local root = character:WaitForChild("HumanoidRootPart", 10)
+		local root = character and character:WaitForChild("HumanoidRootPart", 10)
 		if root then
+			root.AssemblyLinearVelocity = Vector3.zero
 			root.CFrame = CFrame.lookAt(layout.Spawn, layout.Spawn + NOSE)
 		end
 	end
@@ -820,6 +796,26 @@ local function runAirplane(ctx, kit)
 			boardPlane(character)
 		end
 	end))
+
+	-- Safety net: whenever the player is not inside the cabin (the move above did not
+	-- take, or they got outside somehow), they are put back on board
+	task.spawn(function()
+		while scene.Parent do
+			task.wait(0.5)
+			if not scene.Parent then
+				break -- the plane is gone (back to the main menu): leave the player alone
+			end
+			local root = kit.playerRoot()
+			if root then
+				local at = root.Position
+				local inside = math.abs(at.X) < 14 and math.abs(at.Z) < 37 and at.Y > layout.FloorY - 2 and at.Y < layout.FloorY + 14
+				if not inside then
+					ctx.debugLog("player is outside the cabin: boarding again")
+					boardPlane(player.Character)
+				end
+			end
+		end
+	end)
 
 	if ctx.sounds.Cabin then
 		ctx.sounds.Cabin:Play()
@@ -890,6 +886,13 @@ local function runAirplane(ctx, kit)
 			ctx.debugLog("sat down in the seat")
 		end
 	end)
+	-- getting up is fine: the prompt comes back while the player is standing, so they can sit down again
+	task.spawn(function()
+		while scene.Parent do
+			seatPrompt.Enabled = not kit.playerIsSitting()
+			task.wait(0.3)
+		end
+	end)
 
 	-- She stands ahead of the player's row and turns to face their seat
 	local towardSeat = Vector3.new(layout.PlayerSeat.X - layout.AttendantStand.X, 0, layout.PlayerSeat.Z - layout.AttendantStand.Z).Unit
@@ -911,18 +914,21 @@ local function runAirplane(ctx, kit)
 		ctx.faceDirection(attendant, Vector3.new(1, 0, 0))
 		attendant.workGesture = "idle"
 
-		for _, part in onTray do
-			part:Destroy()
+		-- whatever is still on the tray table from last time is cleared away
+		for _, record in onTray do
+			Food.remove(record)
 		end
 		table.clear(onTray)
 		local slot = 0
 		for _, entry in items do
 			for _ = 1, entry.quantity do
 				local at = layout.TrayTable + Vector3.new(-0.8 + slot * 0.8, 0, 0)
-				for _, part in buildCabinItem(kit, scene, entry.id, at) do
-					table.insert(onTray, part)
+				local record = Food.place(entry.id, scene, CFrame.new(at), { name = info.ItemName(learn.code, entry.id) })
+				if record then
+					Food.setTakeable(record, true)
+					table.insert(onTray, record)
+					slot += 1
 				end
-				slot += 1
 			end
 		end
 		ctx.playSound("Click")
@@ -962,42 +968,9 @@ end
 -- Dinner: arrive with a friend, get shown to a table, order, eat, pay, leave
 ---------------------------------------------------------------------
 
--- Builds one dish on a plate, standing on `at`
-local function buildDish(kit, parent, id, at)
-	local parts = {}
-	local function add(part)
-		table.insert(parts, part)
-	end
-	local function plate()
-		add(kit.prop(parent, Enum.PartType.Cylinder, Vector3.new(0.08, 1.5, 1.5), CFrame.new(at + Vector3.new(0, 0.04, 0)) * UPRIGHT, WHITE))
-	end
-	if id == "juice" then
-		add(kit.prop(parent, Enum.PartType.Cylinder, Vector3.new(0.8, 0.45, 0.45), CFrame.new(at + Vector3.new(0, 0.4, 0)) * UPRIGHT, WHITE, nil, 0.5))
-		add(kit.prop(parent, Enum.PartType.Cylinder, Vector3.new(0.62, 0.37, 0.37), CFrame.new(at + Vector3.new(0, 0.33, 0)) * UPRIGHT, Color3.fromRGB(255, 165, 45)))
-	elseif id == "soup" then
-		plate()
-		add(kit.prop(parent, Enum.PartType.Cylinder, Vector3.new(0.3, 1.1, 1.1), CFrame.new(at + Vector3.new(0, 0.22, 0)) * UPRIGHT, Color3.fromRGB(235, 235, 240)))
-		add(kit.prop(parent, Enum.PartType.Cylinder, Vector3.new(0.06, 0.95, 0.95), CFrame.new(at + Vector3.new(0, 0.38, 0)) * UPRIGHT, Color3.fromRGB(215, 70, 45)))
-	elseif id == "salad" then
-		plate()
-		for _, offset in { Vector3.new(0, 0.25, 0), Vector3.new(0.25, 0.2, 0.15), Vector3.new(-0.25, 0.2, -0.1) } do
-			add(kit.prop(parent, Enum.PartType.Ball, Vector3.new(0.6, 0.6, 0.6), CFrame.new(at + offset), Color3.fromRGB(95, 175, 75)))
-		end
-		add(kit.prop(parent, Enum.PartType.Ball, Vector3.new(0.25, 0.25, 0.25), CFrame.new(at + Vector3.new(0.1, 0.5, -0.2)), Color3.fromRGB(215, 55, 45)))
-	elseif id == "pasta" then
-		plate()
-		add(kit.prop(parent, Enum.PartType.Ball, Vector3.new(1, 1, 1), CFrame.new(at + Vector3.new(0, 0.3, 0)), Color3.fromRGB(245, 215, 120)))
-		add(kit.prop(parent, Enum.PartType.Ball, Vector3.new(0.5, 0.5, 0.5), CFrame.new(at + Vector3.new(0, 0.7, 0)), Color3.fromRGB(200, 55, 40)))
-	elseif id == "steak" then
-		plate()
-		add(kit.prop(parent, Enum.PartType.Block, Vector3.new(0.9, 0.25, 0.6), CFrame.new(at + Vector3.new(-0.15, 0.2, 0)), Color3.fromRGB(105, 60, 40)))
-		add(kit.prop(parent, Enum.PartType.Ball, Vector3.new(0.4, 0.4, 0.4), CFrame.new(at + Vector3.new(0.45, 0.25, 0.2)), Color3.fromRGB(95, 175, 75)))
-	else -- cake
-		plate()
-		add(kit.prop(parent, Enum.PartType.Block, Vector3.new(0.7, 0.5, 0.5), CFrame.new(at + Vector3.new(0, 0.33, 0)), Color3.fromRGB(85, 50, 35)))
-		add(kit.prop(parent, Enum.PartType.Block, Vector3.new(0.72, 0.08, 0.52), CFrame.new(at + Vector3.new(0, 0.6, 0)), Color3.fromRGB(250, 240, 230)))
-	end
-	return parts
+-- A plate for a dish to stand on, on `at`
+local function buildPlate(kit, parent, at)
+	return kit.prop(parent, Enum.PartType.Cylinder, Vector3.new(0.08, 1.05, 1.05), CFrame.new(at + Vector3.new(0, 0.04, 0)) * UPRIGHT, WHITE)
 end
 
 local function runDinner(ctx, kit)
@@ -1011,6 +984,7 @@ local function runDinner(ctx, kit)
 	local scene = ReplicatedStorage:WaitForChild("Scenarios"):WaitForChild("Dinner"):Clone()
 	scene.Parent = workspace
 	ctx.playSound("Appear")
+	Food.start({ burst = ctx.burst, debugLog = ctx.debugLog })
 	ctx.burst(Vector3.new(0, 1, -45), "Dust", 60, Vector3.new(40, 1, 34))
 	if ctx.sounds.Crowd then
 		ctx.sounds.Crowd:Play()
@@ -1112,31 +1086,94 @@ local function runDinner(ctx, kit)
 		ctx.burst(card.Position, "Sparkles", 16)
 	end
 
-	local function placeDishes(items)
+	local dishes = {} -- the gear standing on the plates
+	local playerBench, playerSeatPosition = nil, nil -- where the player sat down
+	local mealNumber = 0 -- goes up with every order, so the friend stops eating a meal that was cleared away
+	-- items = everything ordered; friendItems = the part of it that is for the friend
+	local function placeDishes(items, friendItems)
 		for _, part in onTable do
 			part:Destroy()
 		end
 		table.clear(onTable)
-		-- three places along each side of the table
-		local slots = {}
-		for _, side in { 1, -1 } do
-			for _, dx in { 1.4, 0.2, 2.5 } do
-				table.insert(slots, Vector3.new(top.Position.X + dx - 0.6, layout.TableTopY, top.Position.Z + side * 1.15))
-			end
+		for _, record in dishes do
+			Food.remove(record) -- anything not picked up is cleared away
 		end
-		local slot = 0
+		table.clear(dishes)
+		mealNumber += 1
+
+		-- one entry per dish
+		local units = {}
 		for _, entry in items do
 			for _ = 1, entry.quantity do
-				slot += 1
-				local at = slots[slot]
-				if at then
-					for _, part in buildDish(kit, scene, entry.id, at) do
-						table.insert(onTable, part)
-					end
+				table.insert(units, { id = entry.id })
+			end
+		end
+		-- Which of them are the friend's: what the waitress noted down. If she noted
+		-- nothing, every second dish, so that both people have something to eat.
+		local forFriend, noted = {}, 0
+		for _, entry in friendItems or {} do
+			forFriend[entry.id] = (forFriend[entry.id] or 0) + entry.quantity
+		end
+		for _, unit in units do
+			if (forFriend[unit.id] or 0) > 0 then
+				forFriend[unit.id] -= 1
+				unit.friend = true
+				noted += 1
+			end
+		end
+		if noted == 0 and #units >= 2 then
+			for index = 2, #units, 2 do
+				units[index].friend = true
+			end
+		end
+
+		-- three places along each side of the table: the player's side and the friend's
+		local playerSide = (playerBench and playerBench.Position.Z < top.Position.Z) and -1 or 1
+		local free = { [playerSide] = {}, [-playerSide] = {} }
+		for _, side in { playerSide, -playerSide } do
+			for _, dx in { 1.4, 0.2, 2.5 } do
+				table.insert(free[side], Vector3.new(top.Position.X + dx - 0.6, layout.TableTopY, top.Position.Z + side * 1.15))
+			end
+		end
+
+		local friendDishes = {}
+		for _, unit in units do
+			local side = unit.friend and -playerSide or playerSide
+			local at = table.remove(free[side], 1) or table.remove(free[-side], 1)
+			if at then
+				-- the dish is gear, standing on a plate
+				local record = Food.place(unit.id, scene, CFrame.new(at + Vector3.new(0, 0.08, 0)), { name = info.ItemName(learn.code, unit.id) })
+				if record then
+					table.insert(dishes, record)
+					table.insert(onTable, buildPlate(kit, scene, at))
 					ctx.burst(at + Vector3.new(0, 0.4, 0), "Sparkles", 8)
+					if unit.friend then
+						table.insert(friendDishes, record) -- the friend's: the player cannot take it
+					else
+						Food.setTakeable(record, true) -- the player's: pick it up to eat it
+					end
 				end
 			end
 		end
+
+		-- The friend eats their own food, one dish after another
+		local meal = mealNumber
+		local function stillEating()
+			return meal == mealNumber and scene.Parent ~= nil and friendSeated
+		end
+		task.spawn(function()
+			task.wait(6) -- once the waitress has served and the friend has said something about it
+			for _, record in friendDishes do
+				if not stillEating() then
+					break
+				end
+				Food.npcEat(record, function()
+					local head = stillEating() and friend.rig:FindFirstChild("Head")
+					return head and (head.CFrame * CFrame.new(0, -0.25, -0.75)).Position or nil
+				end)
+				task.wait(2)
+			end
+		end)
 	end
 
 	-- Walks the waitress along the centre aisle to somewhere in the room
@@ -1162,6 +1199,7 @@ local function runDinner(ctx, kit)
 			return
 		end
 		playerSeated = true
+		playerBench, playerSeatPosition = bench, seatPosition
 		stage = "seated"
 		for _, prompt in prompts do
 			prompt:Destroy()
@@ -1198,6 +1236,26 @@ local function runDinner(ctx, kit)
 		end)
 	end
 
+	-- Getting up is fine: while the player is standing, their bench offers the seat again
+	task.spawn(function()
+		local again = nil
+		while scene.Parent do
+			task.wait(0.3)
+			local standing = playerSeated and playerBench ~= nil and not kit.playerIsSitting()
+			if standing and not again then
+				again = create("ProximityPrompt", {
+					ActionText = kit.text("sit"), ObjectText = "", HoldDuration = 0, MaxActivationDistance = 8, RequiresLineOfSight = false,
+				}, playerBench)
+				again.Triggered:Connect(function()
+					kit.sitPlayer(playerSeatPosition, top.Position)
+				end)
+			elseif not standing and again then
+				again:Destroy()
+				again = nil
+			end
+		end
+	end)
+
 	local function leadToTable()
 		stage = "led"
 		kit.walkPath(waitress, layout.ToTable)
@@ -1219,7 +1277,7 @@ local function runDinner(ctx, kit)
 		end
 	end
 
-	local function serveOrder(items)
+	local function serveOrder(items, friendItems)
 		stage = "ordered"
 		task.spawn(function()
 			task.wait(2)
@@ -1234,7 +1292,7 @@ local function runDinner(ctx, kit)
 		ctx.walkTo(waitress, 0, waitress.root.Position.Z)
 		waitressTo(layout.TableStand, AT_TABLE_FACING)
 		waitress.workGesture = "idle"
-		placeDishes(items)
+		placeDishes(items, friendItems)
 		ctx.playSound("Bell")
 		kit.request(waitressCharacter, "food_served", items)
 		stage = "served"
@@ -1281,7 +1339,7 @@ local function runDinner(ctx, kit)
 		if step == "lead_to_table" and stage == "arrive" then
 			task.spawn(leadToTable)
 		elseif step == "order_taken" and stage == "seated" and result.items and #result.items > 0 then
-			task.spawn(serveOrder, result.items)
+			task.spawn(serveOrder, result.items, result.friendItems)
 		elseif step == "bring_bill" and stage == "served" then
 			task.spawn(bringBill)
 		elseif step == "paid" and stage == "bill" then

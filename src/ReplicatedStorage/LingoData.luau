@@ -127,7 +127,7 @@ Data.FastFood = {
 	MaxItemsPerOrder = 6,
 
 	-- station = which kitchen station the cook uses; seconds = how long it takes
-	-- The food is the classic Roblox gear (templates in ReplicatedStorage.Foods).
+	-- The food is official Roblox gear: real Tools (templates in ReplicatedStorage.FoodTools, same ids).
 	-- station = which kitchen station the cook uses; seconds = how long it takes;
 	-- bites = how many bites or sips it lasts; fill = how much each one fills the stomach (1 = full)
 	Menu = {
@@ -182,26 +182,50 @@ end
 -- Airplane and dinner scenarios (run by ReplicatedStorage.LingoScenes)
 ---------------------------------------------------------------------
 
-local DINNER_ORDER = { "soup", "salad", "pasta", "steak", "cake", "juice" }
+-- Every dish and drink is official Roblox gear (the Tools in ReplicatedStorage.FoodTools,
+-- which have the same ids), so the menus only offer what exists as gear.
+local DINNER_ORDER = { "pizza", "turkey", "doubleburger", "watermelon", "cake", "cola" }
 
 local DINNER_NAMES = {
-	["en"] = { "Tomato soup", "Green salad", "Spaghetti", "Steak", "Chocolate cake", "Orange juice" },
-	["es"] = { "Sopa de tomate", "Ensalada verde", "Espaguetis", "Filete", "Tarta de chocolate", "Zumo de naranja" },
-	["fr"] = { "Soupe de tomates", "Salade verte", "Spaghettis", "Steak", "Gâteau au chocolat", "Jus d'orange" },
-	["de"] = { "Tomatensuppe", "Grüner Salat", "Spaghetti", "Steak", "Schokoladenkuchen", "Orangensaft" },
-	["it"] = { "Zuppa di pomodoro", "Insalata verde", "Spaghetti", "Bistecca", "Torta al cioccolato", "Succo d'arancia" },
-	["pt"] = { "Sopa de tomate", "Salada verde", "Espaguete", "Bife", "Bolo de chocolate", "Suco de laranja" },
-	["ja"] = { "トマトスープ", "グリーンサラダ", "スパゲッティ", "ステーキ", "チョコレートケーキ", "オレンジジュース" },
-	["ko"] = { "토마토 수프", "그린 샐러드", "스파게티", "스테이크", "초콜릿 케이크", "오렌지 주스" },
-	["zh-CN"] = { "番茄汤", "蔬菜沙拉", "意大利面", "牛排", "巧克力蛋糕", "橙汁" },
-	["zh-TW"] = { "番茄湯", "蔬菜沙拉", "義大利麵", "牛排", "巧克力蛋糕", "柳橙汁" },
-	["ar"] = { "شوربة طماطم", "سلطة خضراء", "سباغيتي", "شريحة لحم", "كعكة شوكولاتة", "عصير برتقال" },
-	["ru"] = { "Томатный суп", "Зелёный салат", "Спагетти", "Стейк", "Шоколадный торт", "Апельсиновый сок" },
-	["pl"] = { "Zupa pomidorowa", "Zielona sałatka", "Spaghetti", "Stek", "Ciasto czekoladowe", "Sok pomarańczowy" },
-	["tr"] = { "Domates çorbası", "Yeşil salata", "Spagetti", "Biftek", "Çikolatalı pasta", "Portakal suyu" },
-	["id"] = { "Sup tomat", "Salad hijau", "Spageti", "Steik", "Kue cokelat", "Jus jeruk" },
-	["vi"] = { "Súp cà chua", "Salad rau xanh", "Mì Ý", "Bít tết", "Bánh sô cô la", "Nước cam" },
-	["th"] = { "ซุปมะเขือเทศ", "สลัดผัก", "สปาเกตตี", "สเต๊ก", "เค้กช็อกโกแลต", "น้ำส้ม" },
+	["en"] = { "Pepperoni pizza", "Roast turkey leg", "Double cheeseburger", "Watermelon", "Chocolate cake", "Cola" },
+	["es"] = { "Pizza de pepperoni", "Muslo de pavo asado", "Hamburguesa doble con queso", "Sandía", "Tarta de chocolate", "Refresco de cola" },
+	["fr"] = { "Pizza au pepperoni", "Cuisse de dinde rôtie", "Double cheeseburger", "Pastèque", "Gâteau au chocolat", "Cola" },
+	["de"] = { "Salamipizza", "Gebratene Putenkeule", "Doppelter Cheeseburger", "Wassermelone", "Schokoladenkuchen", "Cola" },
+	["it"] = { "Pizza al salame piccante", "Coscia di tacchino arrosto", "Doppio cheeseburger", "Anguria", "Torta al cioccolato", "Cola" },
+	["pt"] = { "Pizza de pepperoni", "Coxa de peru assada", "Cheeseburger duplo", "Melancia", "Bolo de chocolate", "Refrigerante de cola" },
+	["ja"] = { "ペパロニピザ", "ローストターキーレッグ", "ダブルチーズバーガー", "スイカ", "チョコレートケーキ", "コーラ" },
+	["ko"] = { "페퍼로니 피자", "칠면조 다리 구이", "더블 치즈버거", "수박", "초콜릿 케이크", "콜라" },
+	["zh-CN"] = { "意式辣香肠披萨", "烤火鸡腿", "双层芝士汉堡", "西瓜", "巧克力蛋糕", "可乐" },
+	["zh-TW"] = { "義式臘腸披薩", "烤火雞腿", "雙層起司漢堡", "西瓜", "巧克力蛋糕", "可樂" },
+	["ar"] = { "بيتزا ببروني", "فخذ ديك رومي مشوي", "برجر مزدوج بالجبن", "بطيخ", "كعكة شوكولاتة", "كولا" },
+	["ru"] = { "Пицца пепперони", "Жареная ножка индейки", "Двойной чизбургер", "Арбуз", "Шоколадный торт", "Кола" },
+	["pl"] = { "Pizza pepperoni", "Pieczone udko z indyka", "Podwójny cheeseburger", "Arbuz", "Ciasto czekoladowe", "Cola" },
+	["tr"] = { "Pepperonili pizza", "Kızarmış hindi budu", "Duble çizburger", "Karpuz", "Çikolatalı pasta", "Kola" },
+	["id"] = { "Piza pepperoni", "Paha kalkun panggang", "Burger keju dobel", "Semangka", "Kue cokelat", "Kola" },
+	["vi"] = { "Pizza pepperoni", "Đùi gà tây nướng", "Bánh mì kẹp phô mai hai tầng", "Dưa hấu", "Bánh sô cô la", "Cô ca" },
+	["th"] = { "พิซซ่าเปปเปอโรนี", "น่องไก่งวงอบ", "ดับเบิลชีสเบอร์เกอร์", "แตงโม", "เค้กช็อกโกแลต", "โคล่า" },
+}
+
+local AIRPLANE_ORDER = { "cola", "milk", "coffee", "cocoa", "sandwich", "cookie" }
+
+local AIRPLANE_NAMES = {
+	["en"] = { "Cola", "Chocolate milk", "Coffee", "Hot chocolate", "Sandwich", "Fortune cookie" },
+	["es"] = { "Refresco de cola", "Leche con chocolate", "Café", "Chocolate caliente", "Sándwich", "Galleta de la fortuna" },
+	["fr"] = { "Cola", "Lait au chocolat", "Café", "Chocolat chaud", "Sandwich", "Biscuit chinois" },
+	["de"] = { "Cola", "Schokomilch", "Kaffee", "Heiße Schokolade", "Sandwich", "Glückskeks" },
+	["it"] = { "Cola", "Latte al cioccolato", "Caffè", "Cioccolata calda", "Panino", "Biscotto della fortuna" },
+	["pt"] = { "Refrigerante de cola", "Leite com chocolate", "Café", "Chocolate quente", "Sanduíche", "Biscoito da sorte" },
+	["ja"] = { "コーラ", "チョコレートミルク", "コーヒー", "ホットチョコレート", "サンドイッチ", "フォーチュンクッキー" },
+	["ko"] = { "콜라", "초코우유", "커피", "핫초코", "샌드위치", "포춘 쿠키" },
+	["zh-CN"] = { "可乐", "巧克力牛奶", "咖啡", "热巧克力", "三明治", "幸运饼干" },
+	["zh-TW"] = { "可樂", "巧克力牛奶", "咖啡", "熱巧克力", "三明治", "幸運餅乾" },
+	["ar"] = { "كولا", "حليب بالشوكولاتة", "قهوة", "شوكولاتة ساخنة", "شطيرة", "كعكة الحظ" },
+	["ru"] = { "Кола", "Шоколадное молоко", "Кофе", "Горячий шоколад", "Сэндвич", "Печенье с предсказанием" },
+	["pl"] = { "Cola", "Mleko czekoladowe", "Kawa", "Gorąca czekolada", "Kanapka", "Ciasteczko z wróżbą" },
+	["tr"] = { "Kola", "Çikolatalı süt", "Kahve", "Sıcak çikolata", "Sandviç", "Fal kurabiyesi" },
+	["id"] = { "Kola", "Susu cokelat", "Kopi", "Cokelat panas", "Roti lapis", "Kue keberuntungan" },
+	["vi"] = { "Cô ca", "Sữa sô cô la", "Cà phê", "Sô cô la nóng", "Bánh mì kẹp", "Bánh quy may mắn" },
+	["th"] = { "โคล่า", "นมช็อกโกแลต", "กาแฟ", "ช็อกโกแลตร้อน", "แซนด์วิช", "คุกกี้เสี่ยงทาย" },
 }
 
 Data.Scenes = {
@@ -214,16 +238,16 @@ Data.Scenes = {
 		MaxItems = 3,
 		-- what the flight attendant can bring, free of charge
 		Items = {
-			{ id = "water", english = "Water" },
-			{ id = "juice", english = "Orange juice" },
+			{ id = "cola", english = "Cola" },
+			{ id = "milk", english = "Chocolate milk" },
 			{ id = "coffee", english = "Coffee" },
-			{ id = "tea", english = "Tea" },
+			{ id = "cocoa", english = "Hot chocolate" },
 			{ id = "sandwich", english = "Sandwich" },
-			{ id = "cookies", english = "Cookies" },
+			{ id = "cookie", english = "Fortune cookie" },
 		},
 		Layout = {
 			FloorY = 200,
-			Spawn = Vector3.new(0, 204, 24), -- where the player starts, at the back of the cabin
+			Spawn = Vector3.new(0, 204, 14), -- where the player starts: in the aisle, far enough from the rear wall that a camera behind them is still inside the cabin
 			PlayerSeat = Vector3.new(6, 202, 4), -- top of the seat cushion
 			SeatedRootY = 203, -- height of an NPC's root part when sitting in a seat
 			PassengerASeat = Vector3.new(-6, 0, 4),
@@ -231,7 +255,7 @@ Data.Scenes = {
 			AttendantStand = Vector3.new(1.2, 0, -1), -- in the aisle, ahead of the player's row, so they need not turn their head far
 			Galley = Vector3.new(0, 0, 28),
 			TrayTable = Vector3.new(6, 203.48, -0.4), -- top of the fold-down table
-			TutorSpot = Vector3.new(-3, 205.5, 26),
+			TutorSpot = Vector3.new(-2.6, 205.5, 8), -- beside the aisle, ahead of where the player starts
 		},
 	},
 
@@ -242,8 +266,8 @@ Data.Scenes = {
 		FriendName = "Alex",
 		MaxItems = 6,
 		Items = {
-			{ id = "soup", price = 6 }, { id = "salad", price = 7 }, { id = "pasta", price = 12 },
-			{ id = "steak", price = 18 }, { id = "cake", price = 6 }, { id = "juice", price = 3 },
+			{ id = "pizza", price = 12 }, { id = "turkey", price = 18 }, { id = "doubleburger", price = 14 },
+			{ id = "watermelon", price = 5 }, { id = "cake", price = 6 }, { id = "cola", price = 3 },
 		},
 		Layout = {
 			DoorZ = -25, -- inside the restaurant is anything with a smaller Z than this
@@ -266,6 +290,13 @@ for _, scene in Data.Scenes do
 	for _, item in scene.Items do
 		scene.ItemById[item.id] = item
 	end
+end
+
+-- Name of something served on the plane in a language
+function Data.Scenes.airplane.ItemName(code, itemId)
+	local index = table.find(AIRPLANE_ORDER, itemId)
+	local row = AIRPLANE_NAMES[code] or AIRPLANE_NAMES["en"]
+	return (index and row[index]) or itemId
 end
 
 -- Name of a dinner dish in a language

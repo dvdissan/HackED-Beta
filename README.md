@@ -13,7 +13,7 @@ HackED Beta Submission
 | `src/StarterPlayer/StarterPlayerScripts/VRHandsOnly.client.luau` | VR body display |
 | `src/ReplicatedStorage/LingoScenes.luau` | Airplane and dinner scenarios |
 | `src/ReplicatedStorage/LingoData.luau` | Languages, UI translations, menus, layout coordinates, sound ids |
-| `src/ReplicatedStorage/LingoFood.luau` | Food items the player can hold and eat |
+| `src/ReplicatedStorage/LingoFood.luau` | Food and drink: every item is official Roblox gear, equipped as a real Tool and eaten bite by bite |
 | `src/ServerScriptService/LingoServer.server.luau` | Spawns the character and calls the Claude API for the characters' lines |
 | `src/Workspace/WindService.luau` | Wind effect |
 

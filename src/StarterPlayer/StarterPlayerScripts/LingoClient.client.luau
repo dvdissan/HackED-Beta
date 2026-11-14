@@ -992,9 +992,8 @@ end
 
 local BUN = Color3.fromRGB(216, 160, 88)
 
--- The food itself is the classic Roblox gear: one template part per menu item,
--- each with its mesh and its own "Open" and "Eat" sounds.
-local FOOD_TEMPLATES = ReplicatedStorage:WaitForChild("Foods")
+-- The food itself is official Roblox gear: real Tools, placed and handled by LingoFood
+-- (templates in ReplicatedStorage.FoodTools).
 
 local TRAY_SLOTS = {
 	Vector3.new(-1.1, 0.06, -0.5), Vector3.new(0, 0.06, -0.5), Vector3.new(1.1, 0.06, -0.5),
@@ -1012,18 +1011,20 @@ local function newTray(parent, cframe)
 	return { model = model, base = base, count = 0, items = {} }
 end
 
--- Puts one food item on the next free tray slot, with a little pop
-local function addFoodToTray(tray, itemId)
-	local template = FOOD_TEMPLATES:FindFirstChild(itemId)
-	if not template or tray.count >= #TRAY_SLOTS then
-		return
+-- Puts one food item (a gear Tool) on the next free tray slot, with a little pop
+local function addFoodToTray(tray, itemId, options)
+	if tray.count >= #TRAY_SLOTS then
+		return nil
+	end
+	local record = LingoFood.place(itemId, tray.model, tray.base.CFrame * CFrame.new(TRAY_SLOTS[tray.count + 1]), options)
+	if not record then
+		return nil
 	end
 	tray.count += 1
-	local food = template:Clone()
-	food.CFrame = tray.base.CFrame * CFrame.new(TRAY_SLOTS[tray.count] + Vector3.new(0, food.Size.Y / 2, 0))
-	food.Parent = tray.model
-	table.insert(tray.items, { id = itemId, part = food })
-	burst(food.Position + Vector3.new(0, 0.3, 0), "Sparkles", 14)
+	local entry = { id = itemId, record = record }
+	table.insert(tray.items, entry)
+	burst(record.handle.Position + Vector3.new(0, 0.3, 0), "Sparkles", 14)
+	return entry
 end
 
 ---------------------------------------------------------------------
@@ -2013,24 +2014,8 @@ local function runFastFood(mainLanguage, learnLanguage)
 	------------------------------------------------------------------
 
 	local carriedByCook = nil
-	local held = {} -- "Right" / "Left" -> the food in that hand
 	local fullness = 0 -- 0 = empty stomach, 1 = full; drops slowly as the food is digested
 	local DIGEST_SECONDS = 80 -- how long a completely full stomach takes to digest
-	local MOUTH_RANGE = 1.5 -- how close to the mouth counts as taking a bite (VR)
-	local REACH_RANGE = 1.7 -- how close a hand must get to food on the tray to pick it up (VR)
-	local BITE_INTERVAL = 0.9
-	-- In a tracked hand the food sits in the hand's grip, the way a Roblox tool is held.
-	-- GRIP_LIFT = how far the food's centre is above the grip point, so the hand closes
-	-- around the cup, the bone of the turkey leg, or the underside of the burger.
-	local GRIP_LIFT = { burger = 0.3, turkey = 0.55, taco = 0.3, cola = 0.2, milk = 0.2 }
-	local DEFAULT_GRIP = CFrame.new(0, -0.16, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-
-	local function heldCFrame(hand, handName, item)
-		local grip = hand:FindFirstChild(handName .. "GripAttachment")
-		-- food shrinks as it is eaten, so it settles down into the hand instead of floating
-		local shrink = item.mesh and item.baseScale.Y > 0 and item.mesh.Scale.Y / item.baseScale.Y or 1
-		return hand.CFrame * (grip and grip.CFrame or DEFAULT_GRIP) * CFrame.new(0, (GRIP_LIFT[item.id] or 0.25) * shrink, 0)
-	end
 	local STOMACH_COLOR = Color3.fromRGB(120, 200, 90)
 
 	-- Stomach bar: shows while there is food to digest
@@ -2052,24 +2037,6 @@ local function runFastFood(mainLanguage, learnLanguage)
 		if carriedByCook then
 			carriedByCook.model:PivotTo(cook.root.CFrame * CFrame.new(0, 0.35, -1.75))
 		end
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart")
-		if not root then
-			return
-		end
-		for handName, item in held do
-			local hand = VRService.VREnabled and character:FindFirstChild(handName .. "Hand")
-			if hand then
-				-- VR: the food sits in the tracked hand and moves with the controller
-				item.part.CFrame = heldCFrame(hand, handName, item)
-			else
-				-- no hand tracking: hold it out in front, and lift it to the mouth for a bite
-				local side = handName == "Right" and 1 or -1
-				local rest = CFrame.new(0.9 * side, -0.5, -2.0)
-				local mouth = CFrame.new(0.15 * side, 1.3, -1.0)
-				item.part.CFrame = root.CFrame * rest:Lerp(mouth, item.raise.Value)
-			end
-		end
 	end)
 
 	-- Digesting: the stomach empties slowly over time
@@ -2081,46 +2048,38 @@ local function runFastFood(mainLanguage, learnLanguage)
 		stomachFill.Size = UDim2.fromScale(fullness, 1)
 	end)
 
-	local function freeHand(preferred)
-		if preferred and not held[preferred] then
-			return preferred
-		end
-		if not held.Right then
-			return "Right"
-		end
-		if not held.Left then
-			return "Left"
-		end
-		return nil
-	end
+	-- The food is gear. LingoFood equips it in the player's hand and handles the eating
+	-- (click, or in VR bring it to the mouth); every bite fills the stomach.
+	local lastFullNotice = 0
+	LingoFood.start({
+		burst = burst, debugLog = debugLog,
+		canBite = function()
+			if fullness < 1 then
+				return true
+			end
+			-- too full: wait for some of it to be digested
+			local now = os.clock()
+			if now - lastFullNotice > 2 then
+				lastFullNotice = now
+				debugLog("too full to eat: digesting")
+				tween(stomachFill, 0.15, { BackgroundColor3 = Color3.fromRGB(230, 80, 70) })
+				task.delay(0.5, function()
+					tween(stomachFill, 0.3, { BackgroundColor3 = STOMACH_COLOR })
+				end)
+			end
+			return false
+		end,
+		onBite = function(record)
+			fullness = math.min(1, fullness + record.fill)
+		end,
+	})
 
-	-- Takes one item off the tray and into a hand
-	local function takeFood(tray, entry, preferredHand)
-		local handName = freeHand(preferredHand)
+	-- An item has left the tray for the player's hand
+	local function foodTaken(tray, entry)
 		local index = table.find(tray.items, entry)
-		if not handName or not index or not trayTakeable then
-			return
+		if index then
+			table.remove(tray.items, index)
 		end
-		table.remove(tray.items, index)
-		if entry.prompt then
-			entry.prompt:Destroy()
-		end
-
-		local menuItem = fastFood.MenuById[entry.id]
-		local mesh = entry.part:FindFirstChildOfClass("SpecialMesh")
-		entry.part.Parent = scene
-		held[handName] = {
-			id = entry.id, part = entry.part, mesh = mesh, baseScale = mesh and mesh.Scale or Vector3.one,
-			bites = menuItem.bites, bitesLeft = menuItem.bites, fill = menuItem.fill, drink = menuItem.kind == "drink",
-			lastBite = os.clock(), raise = Instance.new("NumberValue"), raising = false,
-		}
-		local openSound = entry.part:FindFirstChild("Open")
-		if openSound then
-			openSound:Play()
-		end
-		burst(entry.part.Position, "Sparkles", 16)
-		debugLog("picked up " .. entry.id .. " (" .. handName .. " hand)")
-
 		if not tray.announced then
 			tray.announced = true
 			queueEvent("tray_taken")
@@ -2147,119 +2106,9 @@ local function runFastFood(mainLanguage, learnLanguage)
 		}, tray.model)
 		TweenService:Create(tray.highlight, TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { FillTransparency = 0.9 }):Play()
 		for _, entry in tray.items do
-			-- each item has its own prompt, labelled with its name in the language being practised
-			entry.prompt = create("ProximityPrompt", {
-				ActionText = fastFood.ItemName(learnLanguage.code, entry.id), ObjectText = "", HoldDuration = 0,
-				MaxActivationDistance = 9, RequiresLineOfSight = false,
-			}, entry.part)
-			entry.prompt.Triggered:Connect(function()
-				takeFood(tray, entry)
-			end)
+			LingoFood.setTakeable(entry.record, true)
 		end
 		updateStatus()
-	end
-
-	-- One bite or sip. The item shrinks, the stomach fills, and when the last bite is gone so is the item.
-	local lastFullNotice = 0
-	local function bite(handName, item)
-		local now = os.clock()
-		if now - item.lastBite < BITE_INTERVAL then
-			return
-		end
-		if fullness >= 1 then
-			-- too full: wait for some of it to be digested
-			if now - lastFullNotice > 2 then
-				lastFullNotice = now
-				debugLog("too full to eat: digesting")
-				tween(stomachFill, 0.15, { BackgroundColor3 = Color3.fromRGB(230, 80, 70) })
-				task.delay(0.5, function()
-					tween(stomachFill, 0.3, { BackgroundColor3 = STOMACH_COLOR })
-				end)
-			end
-			return
-		end
-
-		item.lastBite = now
-		item.bitesLeft -= 1
-		fullness = math.min(1, fullness + item.fill)
-		local eatSound = item.part:FindFirstChild("Eat")
-		if eatSound then
-			eatSound:Play()
-		end
-		burst(item.part.Position, item.drink and "Drops" or "Poof", item.drink and 8 or 5)
-		if item.mesh then
-			tween(item.mesh, 0.25, { Scale = item.baseScale * (0.4 + 0.6 * item.bitesLeft / item.bites) })
-		end
-
-		if item.bitesLeft <= 0 then
-			held[handName] = nil
-			debugLog("finished " .. item.id)
-			burst(item.part.Position, "Sparkles", 16)
-			if item.mesh then
-				tween(item.mesh, 0.3, { Scale = Vector3.zero })
-			end
-			Debris:AddItem(item.part, 2) -- long enough for the last bite's sound to finish
-		end
-	end
-
-	-- Desktop / gamepad: click to lift the food to the mouth and take a bite
-	UserInputService.InputBegan:Connect(function(input, processed)
-		if processed or VRService.VREnabled then
-			return
-		end
-		local isBiteInput = input.UserInputType == Enum.UserInputType.MouseButton1
-			or input.UserInputType == Enum.UserInputType.Touch
-			or input.KeyCode == Enum.KeyCode.ButtonR2
-		if not isBiteInput then
-			return
-		end
-		for _, handName in { "Right", "Left" } do
-			local item = held[handName]
-			if item then
-				if not item.raising and os.clock() - item.lastBite >= BITE_INTERVAL then
-					item.raising = true
-					tween(item.raise, 0.25, { Value = 1 })
-					task.delay(0.3, function()
-						if held[handName] == item then
-							bite(handName, item)
-						end
-						tween(item.raise, 0.3, { Value = 0 })
-						item.raising = false
-					end)
-				end
-				break
-			end
-		end
-	end)
-
-	-- VR: hands pick food up by reaching for it, and food held near the mouth gets eaten
-	local function updateFoodInteraction(character)
-		if not VRService.VREnabled or not character then
-			return
-		end
-		if trayTakeable and trayOnCounter then
-			for _, handName in { "Right", "Left" } do
-				local hand = character:FindFirstChild(handName .. "Hand")
-				local tray = trayOnCounter
-				if hand and tray and not held[handName] then
-					for _, entry in tray.items do
-						if (hand.Position - entry.part.Position).Magnitude < REACH_RANGE then
-							takeFood(tray, entry, handName)
-							break
-						end
-					end
-				end
-			end
-		end
-		local head = character:FindFirstChild("Head")
-		if head then
-			local mouth = head.Position + head.CFrame.LookVector * 0.4 - Vector3.new(0, 0.25, 0)
-			for handName, item in held do
-				if (item.part.Position - mouth).Magnitude < MOUTH_RANGE then
-					bite(handName, item)
-				end
-			end
-		end
 	end
 
 	------------------------------------------------------------------
@@ -2305,7 +2154,14 @@ local function runFastFood(mainLanguage, learnLanguage)
 					end
 					setStationActive(item.station, false)
 					cook.workGesture = "carry"
-					addFoodToTray(tray, item.id)
+					local trayEntry = addFoodToTray(tray, item.id, {
+						name = fastFood.ItemName(learnLanguage.code, item.id), bites = item.bites, fill = item.fill,
+					})
+					if trayEntry then
+						trayEntry.record.onTaken = function()
+							foodTaken(tray, trayEntry)
+						end
+					end
 					playSound("Click")
 				end
 				table.insert(made, { id = entry.id, quantity = entry.quantity })
@@ -2866,8 +2722,7 @@ local function runFastFood(mainLanguage, learnLanguage)
 
 		setDoorsOpen(root ~= nil and flatDistance(root.Position, Vector3.new(0, 0, DOOR_Z)) < DOOR_RANGE)
 
-		-- VR: reaching for food on the tray, and eating food held near the mouth
-		updateFoodInteraction(character)
+		-- (reaching for food and eating it in VR is done by LingoFood)
 
 		-- the player stood up from the table
 		if playerSeat then
@@ -2899,6 +2754,29 @@ character:WaitForChild("HumanoidRootPart")
 task.wait(0.6)
 
 closeIntro()
+
+-- The view goes back to the character that has just spawned. After a return to the
+-- main menu the standard camera can be left without a subject (the earlier character
+-- was taken away), which leaves the view and the VR head hanging where they were.
+-- This only re-attaches the standard first-person camera; it does not move or steer it.
+task.spawn(function()
+	for _ = 1, 8 do
+		local camera = workspace.CurrentCamera
+		local current = player.Character
+		local humanoid = current and current:FindFirstChildOfClass("Humanoid")
+		if camera and humanoid then
+			if camera.CameraType ~= Enum.CameraType.Custom then
+				camera.CameraType = Enum.CameraType.Custom
+			end
+			if camera.CameraSubject ~= humanoid then
+				debugLog("camera was not on the character: re-attached")
+				camera.CameraSubject = humanoid
+			end
+		end
+		task.wait(0.25)
+	end
+end)
+
 tween(sounds.Music, 2.5, { Volume = 0.04 }) -- barely there once the scenario starts, so voices are easy to hear
 task.wait(1)
 

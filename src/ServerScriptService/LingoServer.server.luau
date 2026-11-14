@@ -653,7 +653,8 @@ local WAITRESS_SCHEMA = objectSchema({
 	say = { type = "string" },
 	step = { type = "string", enum = WAITRESS_STEPS },
 	items = itemArraySchema(SCENES.dinner),
-}, { "say", "step", "items" })
+	friend_items = itemArraySchema(SCENES.dinner), -- the part of `items` that is for the friend
+}, { "say", "step", "items", "friend_items" })
 
 TRANSLATED[LINE_SCHEMA] = withTranslation(LINE_SCHEMA)
 TRANSLATED[ATTENDANT_SCHEMA] = withTranslation(ATTENDANT_SCHEMA)
@@ -753,10 +754,10 @@ The menu (the only things you serve):
 
 The evening moves on step by step, and you move it on with `step`:
 - lead_to_table: you have greeted them at the door and they want a table. Tell them to follow you, and use this step on that turn.
-- order_taken: at the table, once they have told you everything the two of them want and confirmed it, list it all in `items` with quantities (at most %d things in total), say it will be right out, and use this step.
+- order_taken: at the table, once they have told you everything the two of them want and confirmed it, list it all in `items` with quantities (at most %d things in total), say it will be right out, and use this step. In `friend_items` list the part of that order that is for their friend (the same ids, with quantities); everything else is the guest's own. If they did not say who something is for, split it sensibly so that both of them have something to eat.
 - bring_bill: they ask for the bill. Say you will bring it, and use this step.
 - paid: the bill is on the table and they pay, however they say they are paying. Thank them, wish them a good night, and use this step.
-On every other turn `step` is none. `items` is empty except with order_taken.
+On every other turn `step` is none. `items` and `friend_items` are empty except with order_taken.
 
 %s]], scene.WaitressName, scene.RestaurantName, scene.FriendName, sceneItemList(session, scene), scene.MaxItems, sceneRules(session))
 	end,
@@ -793,7 +794,9 @@ On every other turn `step` is none. `items` is empty except with order_taken.
 		if step == "order_taken" and #items == 0 then
 			step = "none" -- nothing was actually ordered
 		end
-		return { ok = true, say = reply.say, step = step, items = items }
+		-- which of those dishes are the friend's, so the friend can eat them
+		local friendItems = step == "order_taken" and cleanSceneItems(reply.friend_items, SCENES.dinner) or {}
+		return { ok = true, say = reply.say, step = step, items = items, friendItems = friendItems }
 	end,
 	after = function(session, result)
 		if result.step == "order_taken" then
