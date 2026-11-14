@@ -17,7 +17,18 @@ HackED Beta Submission
 | `src/ServerScriptService/LingoServer.server.luau` | Spawns the character and calls the Claude API for the characters' lines |
 | `src/Workspace/WindService.luau` | Wind effect |
 
-The buildings, characters and food models are not scripts, so they are not in `src/`; they live in the Roblox place itself.
+`place/` holds everything else — the buildings, characters, food models, lighting and the scripts again — as one Roblox model file per service:
+
+| File | Goes into |
+| --- | --- |
+| `place/Workspace.rbxm` | Workspace (baseplate, spawn, wind) |
+| `place/ReplicatedStorage.rbxm` | ReplicatedStorage (scenario builds, food, modules, remotes) |
+| `place/ServerScriptService.rbxm` | ServerScriptService |
+| `place/StarterPlayer.rbxm` | StarterPlayer (the two script folders) |
+| `place/Lighting.rbxm` | Lighting (sky, atmosphere, effects) |
+| `place/ServerStorage.rbxm` | ServerStorage (archived earlier builds and imported food tools; not needed to run the game) |
+
+To rebuild the game in a new place: open Roblox Studio, right-click each service in the Explorer, choose **Insert from File…** and pick the matching file. Then turn on **Allow HTTP Requests** in Game Settings > Security, set `Players.CharacterAutoLoads` to off and `Workspace.StreamingEnabled` to off.
 
 ## API key
 
